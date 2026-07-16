@@ -30,7 +30,7 @@
       <p class="text-gray-400 text-[11px] font-medium">아이폰 마이크 입력 & HTML5 Canvas 그래픽 연동</p>
     </div>
 
-    <!-- 📌 주파수 캔버스 영역 -->
+    <!-- 주파수 캔버스 영역 -->
     <div class="relative w-full aspect-[4/3] bg-gray-950 rounded-2xl overflow-hidden border border-gray-800 neon-glow flex items-center justify-center">
       <!-- 대기 상태 가이드 라인 (시작 전에만 보임) -->
       <div id="canvas-placeholder" class="absolute inset-0 flex flex-col items-center justify-center p-6 text-center space-y-2 pointer-events-none">
@@ -44,13 +44,16 @@
     <!-- 제어 및 모드 선택 섹션 -->
     <div class="space-y-4">
       
-      <!-- 비주얼 모드 토글 (막대형 / 선형) -->
-      <div class="flex bg-gray-950 p-1 rounded-xl border border-gray-800">
-        <button id="mode-bars" onclick="setVisualMode('bars')" class="flex-1 py-2 text-xs font-bold rounded-lg transition duration-150 bg-emerald-500 text-gray-950 cursor-pointer">
-          막대형 (Frequency)
+      <!-- 📌 [요청 반영] 3단 모드 토글 (막대형 / 파형 / 원형) -->
+      <div class="grid grid-cols-3 bg-gray-950 p-1 rounded-xl border border-gray-800 text-[11px] font-bold">
+        <button id="mode-bars" onclick="setVisualMode('bars')" class="py-2 rounded-lg transition duration-150 bg-emerald-500 text-gray-950 cursor-pointer">
+          막대형
         </button>
-        <button id="mode-wave" onclick="setVisualMode('wave')" class="flex-1 py-2 text-xs font-bold rounded-lg transition duration-150 text-gray-400 hover:text-white cursor-pointer">
-          파형 (Waveform)
+        <button id="mode-wave" onclick="setVisualMode('wave')" class="py-2 rounded-lg transition duration-150 text-gray-400 hover:text-white cursor-pointer">
+          파형
+        </button>
+        <button id="mode-circle" onclick="setVisualMode('circle')" class="py-2 rounded-lg transition duration-150 text-gray-400 hover:text-white cursor-pointer">
+          원형 🔄
         </button>
       </div>
 
@@ -81,9 +84,6 @@
   </div>
 
   <script>
-    // ==========================================
-    // ⚙️ 오디오 및 그래픽 전역 상태 변수
-    // ==========================================
     let audioCtx = null;
     let analyser = null;
     let sourceNode = null;
@@ -91,7 +91,7 @@
     let animationId = null;
     
     let isRunning = false;
-    let visualMode = 'bars'; // 'bars' (막대) 또는 'wave' (파형)
+    let visualMode = 'bars'; // 'bars', 'wave', 'circle'
 
     const canvas = document.getElementById('visualizer-canvas');
     const ctx = canvas.getContext('2d');
@@ -99,29 +99,22 @@
     const placeholder = document.getElementById('canvas-placeholder');
     const statusFooter = document.getElementById('status-footer');
 
-    // ==========================================
-    // 📱 [핵심] 아이폰 Retina 디스플레이 픽셀 보정 함수
-    // ==========================================
+    // 아이폰 Retina 디스플레이 픽셀 보정 함수
     function resizeCanvas() {
       const dpr = window.devicePixelRatio || 1;
       const rect = canvas.getBoundingClientRect();
       
-      // 화면 물리 픽셀 크기에 맞춰 해상도를 뻥튀기 해줍니다 (아이폰 화면에서 안 번지게 하는 마법)
       canvas.width = rect.width * dpr;
       canvas.height = rect.height * dpr;
       
-      // CSS 크기는 원래대로 유지하여 레이아웃을 고정합니다
       ctx.scale(dpr, dpr);
     }
 
-    // 창 크기 변경 시 해상도 재보정 연동
     window.addEventListener('resize', () => {
       if (isRunning) resizeCanvas();
     });
 
-    // ==========================================
-    // 🎙️ 비주얼라이저 핵심 엔진 구동
-    // ==========================================
+    // 비주얼라이저 핵심 엔진 구동
     async function toggleVisualizer() {
       if (isRunning) {
         stopVisualizer();
@@ -129,23 +122,19 @@
       }
 
       try {
-        // 1. 아이폰 전면 마이크 접근 허용 요청
         stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
 
-        // 2. 오디오 콘텍스트 생성 (iOS 오동작 방지를 위해 사용자 터치 이벤트 직속 실행 필수)
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         analyser = audioCtx.createAnalyser();
         
-        // FFT Size: 주파수 분석 정밀도 (모바일 성능을 위해 256 혹은 512 추천)
-        analyser.fftSize = 256; 
+        // 분석기 정밀도 (원형 그래픽의 촘촘함을 극대화하기 위해 512로 업그레이드)
+        analyser.fftSize = 512; 
 
-        // 3. 마이크 소리 데이터를 분석기에 꽂아주기
         sourceNode = audioCtx.createMediaStreamSource(stream);
         sourceNode.connect(analyser);
 
-        // 4. 앱 상태 변화 및 그래픽 도화지 세팅
         isRunning = true;
-        placeholder.style.opacity = '0'; // 가이드 숨기기
+        placeholder.style.opacity = '0'; 
         resizeCanvas();
 
         startBtn.textContent = '비주얼라이저 중지';
@@ -154,7 +143,6 @@
         statusFooter.innerHTML = "🎙️ 실시간 마이크 입력 감지 중...";
         statusFooter.classList.replace('text-gray-500', 'text-emerald-400');
 
-        // 5. 프레임 드로잉 시작!
         draw();
 
       } catch (err) {
@@ -163,27 +151,22 @@
       }
     }
 
-    // 비주얼라이저 안전하게 끄기
     function stopVisualizer() {
       isRunning = false;
       
-      // 애니메이션 프레임 중단
       if (animationId) {
         cancelAnimationFrame(animationId);
       }
 
-      // 오디오 노드 및 마이크 스트림 연결 차단
       if (sourceNode) sourceNode.disconnect();
       if (audioCtx) audioCtx.close();
       if (stream) {
         stream.getTracks().forEach(track => track.stop());
       }
 
-      // 캔버스 깨끗하게 비우기
       const rect = canvas.getBoundingClientRect();
       ctx.clearRect(0, 0, rect.width, rect.height);
 
-      // UI 원상복구
       placeholder.style.opacity = '1';
       startBtn.textContent = '비주얼라이저 시작하기 ⚡';
       startBtn.classList.replace('bg-red-500', 'bg-emerald-500');
@@ -198,23 +181,22 @@
     function draw() {
       if (!isRunning) return;
 
-      // 주기를 도는 루프 생성
       animationId = requestAnimationFrame(draw);
 
       const rect = canvas.getBoundingClientRect();
       const width = rect.width;
       const height = rect.height;
 
-      // 캔버스 잔상 효과 구현 (지우는 투명도를 낮춰 꼬리가 남는 듯한 고급 피드백 연출)
-      ctx.fillStyle = 'rgba(3, 7, 18, 0.25)'; // gray-950 색상에 살짝 알파 투명도 적용
+      // 잔상 효과 (어두운 투명 사각형으로 배경을 채워 자연스러운 움직임 유도)
+      ctx.fillStyle = 'rgba(3, 7, 18, 0.25)'; 
       ctx.fillRect(0, 0, width, height);
 
       const bufferLength = analyser.frequencyBinCount;
       const dataArray = new Uint8Array(bufferLength);
 
       if (visualMode === 'bars') {
-        // --- 📊 1. 막대형(Frequency) 모드 그리기 ---
-        analyser.getByteFrequencyData(dataArray); // 주파수 크기 수집
+        // --- 📊 1. 막대형(Frequency) 모드 ---
+        analyser.getByteFrequencyData(dataArray);
 
         const barWidth = (width / bufferLength) * 1.5;
         let barHeight;
@@ -223,29 +205,27 @@
         for (let i = 0; i < bufferLength; i++) {
           barHeight = (dataArray[i] / 255) * height * 0.9;
 
-          // 저음에서 고음으로 갈수록 청록색에서 보라색으로 변하는 그라데이션 컬러링
           const r = 16 + (i * 4);
           const g = 185 - (i * 2);
           const b = 129 + (i * 4);
           ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
 
-          // 둥근 사각형 기법으로 막대 그리기
           ctx.fillRect(x, height - barHeight, barWidth - 2, barHeight);
           x += barWidth;
         }
-      } else {
-        // --- 〰️ 2. 파형(Waveform) 모드 그리기 ---
-        analyser.getByteTimeDomainData(dataArray); // 시간에 따른 진폭 수집
+      } else if (visualMode === 'wave') {
+        // --- 〰️ 2. 파형(Waveform) 모드 ---
+        analyser.getByteTimeDomainData(dataArray);
 
         ctx.lineWidth = 3;
-        ctx.strokeStyle = '#10b981'; // emerald-500
+        ctx.strokeStyle = '#10b981'; 
         ctx.beginPath();
 
         const sliceWidth = width / bufferLength;
         let x = 0;
 
         for (let i = 0; i < bufferLength; i++) {
-          const v = dataArray[i] / 128.0; // 진폭 범위 환산
+          const v = dataArray[i] / 128.0; 
           const y = (v * height) / 2;
 
           if (i === 0) {
@@ -259,6 +239,53 @@
 
         ctx.lineTo(width, height / 2);
         ctx.stroke();
+      } else if (visualMode === 'circle') {
+        // --- 🔄 3. [신규] 원형(Circular) 모드 ---
+        analyser.getByteFrequencyData(dataArray);
+
+        const centerX = width / 2;
+        const centerY = height / 2;
+        
+        // 화면 크기에 비례하는 안쪽 기본 원의 반지름 설정 (구심점)
+        const baseRadius = Math.min(width, height) * 0.22; 
+
+        // 비주얼라이저 가이드 라인 역할을 할 중앙 안쪽 동그라미 그리기 (은은한 발광)
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, baseRadius, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(16, 185, 129, 0.2)';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        // 수집된 주파수 데이터를 360도로 원형 배치하여 그리기
+        for (let i = 0; i < bufferLength; i++) {
+          const angle = (i / bufferLength) * Math.PI * 2; // 각 데이터 인덱스를 라디안 각도로 환산
+          
+          // 고주파수 영역(음역대 끝부분)은 소리가 작으므로 스케일을 곱해 시각 밸런스 조정
+          const scale = i > bufferLength * 0.6 ? 1.5 : 1.0;
+          const barLength = (dataArray[i] / 255) * (Math.min(width, height) * 0.28) * scale;
+
+          // 시작점 (기본 원의 테두리)
+          const x1 = centerX + Math.cos(angle) * baseRadius;
+          const y1 = centerY + Math.sin(angle) * baseRadius;
+
+          // 끝점 (밖으로 뻗어나가는 좌표 계산)
+          const x2 = centerX + Math.cos(angle) * (baseRadius + barLength);
+          const y2 = centerY + Math.sin(angle) * (baseRadius + barLength);
+
+          // 주파수 대역 및 각도에 따른 입체적인 네온 그라데이션 컬러링
+          const r = 16 + (i * 3);
+          const g = 185 - Math.floor(barLength * 0.5); // 소리가 크고 길어질수록 붉은빛이 돎
+          const b = 129 + (i * 2);
+
+          ctx.strokeStyle = `rgb(${r}, ${g}, ${b})`;
+          ctx.lineWidth = 2.5;
+          ctx.lineCap = 'round'; // 선 끝 부분을 둥글게 깎아 고급스러운 형태 마감
+
+          ctx.beginPath();
+          ctx.moveTo(x1, y1);
+          ctx.lineTo(x2, y2);
+          ctx.stroke();
+        }
       }
     }
 
@@ -267,15 +294,22 @@
     // ==========================================
     function setVisualMode(mode) {
       visualMode = mode;
+      
       const btnBars = document.getElementById('mode-bars');
       const btnWave = document.getElementById('mode-wave');
+      const btnCircle = document.getElementById('mode-circle');
+
+      // 기존 선택 스타일 초기화 후 활성화된 버튼에만 색상 부여
+      [btnBars, btnWave, btnCircle].forEach(btn => {
+        btn.className = "py-2 rounded-lg transition duration-150 text-gray-400 hover:text-white cursor-pointer";
+      });
 
       if (mode === 'bars') {
-        btnBars.className = "flex-1 py-2 text-xs font-bold rounded-lg transition duration-150 bg-emerald-500 text-gray-950 cursor-pointer";
-        btnWave.className = "flex-1 py-2 text-xs font-bold rounded-lg transition duration-150 text-gray-400 hover:text-white cursor-pointer";
-      } else {
-        btnBars.className = "flex-1 py-2 text-xs font-bold rounded-lg transition duration-150 text-gray-400 hover:text-white cursor-pointer";
-        btnWave.className = "flex-1 py-2 text-xs font-bold rounded-lg transition duration-150 bg-emerald-500 text-gray-950 cursor-pointer";
+        btnBars.className = "py-2 rounded-lg transition duration-150 bg-emerald-500 text-gray-950 cursor-pointer";
+      } else if (mode === 'wave') {
+        btnWave.className = "py-2 rounded-lg transition duration-150 bg-emerald-500 text-gray-950 cursor-pointer";
+      } else if (mode === 'circle') {
+        btnCircle.className = "py-2 rounded-lg transition duration-150 bg-emerald-500 text-gray-950 cursor-pointer";
       }
     }
 
