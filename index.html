@@ -99,7 +99,6 @@
     const placeholder = document.getElementById('canvas-placeholder');
     const statusFooter = document.getElementById('status-footer');
 
-    // 아이폰 Retina 디스플레이 픽셀 보정 함수
     function resizeCanvas() {
       const dpr = window.devicePixelRatio || 1;
       const rect = canvas.getBoundingClientRect();
@@ -114,7 +113,6 @@
       if (isRunning) resizeCanvas();
     });
 
-    // 비주얼라이저 핵심 엔진 구동
     async function toggleVisualizer() {
       if (isRunning) {
         stopVisualizer();
@@ -126,8 +124,6 @@
 
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         analyser = audioCtx.createAnalyser();
-        
-        // 분석기 정밀도
         analyser.fftSize = 512; 
 
         sourceNode = audioCtx.createMediaStreamSource(stream);
@@ -153,16 +149,10 @@
 
     function stopVisualizer() {
       isRunning = false;
-      
-      if (animationId) {
-        cancelAnimationFrame(animationId);
-      }
-
+      if (animationId) cancelAnimationFrame(animationId);
       if (sourceNode) sourceNode.disconnect();
       if (audioCtx) audioCtx.close();
-      if (stream) {
-        stream.getTracks().forEach(track => track.stop());
-      }
+      if (stream) stream.getTracks().forEach(track => track.stop());
 
       const rect = canvas.getBoundingClientRect();
       ctx.clearRect(0, 0, rect.width, rect.height);
@@ -187,30 +177,33 @@
       const width = rect.width;
       const height = rect.height;
 
-      // 잔상 효과
       ctx.fillStyle = 'rgba(3, 7, 18, 0.25)'; 
       ctx.fillRect(0, 0, width, height);
 
       const bufferLength = analyser.frequencyBinCount;
       const dataArray = new Uint8Array(bufferLength);
 
+      // 🎯 유효 주파수 대역 필터링 변수 (침묵하는 고주파수 커트)
+      const activeLength = Math.floor(bufferLength * 0.6); 
+
       if (visualMode === 'bars') {
-        // --- 📊 1. 막대형(Frequency) 모드 ---
+        // --- 📊 1. 막대형(Frequency) 모드 (전체 너비 확장 완료) ---
         analyser.getByteFrequencyData(dataArray);
 
-        const barWidth = (width / bufferLength) * 1.5;
+        const barWidth = width / activeLength; // 유효 대역 수에 맞춰 바 너비 계산
         let barHeight;
         let x = 0;
 
-        for (let i = 0; i < bufferLength; i++) {
-          barHeight = (dataArray[i] / 255) * height * 0.9;
+        for (let i = 0; i < activeLength; i++) {
+          barHeight = (dataArray[i] / 255) * height * 0.85;
 
-          const r = 16 + (i * 4);
-          const g = 185 - (i * 2);
-          const b = 129 + (i * 4);
+          // 색상 비율도 activeLength 기준으로 매핑하여 자연스럽게 전환
+          const r = 16 + ((i / activeLength) * 160);
+          const g = 185 - ((i / activeLength) * 100);
+          const b = 129 + ((i / activeLength) * 120);
           ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
 
-          ctx.fillRect(x, height - barHeight, barWidth - 2, barHeight);
+          ctx.fillRect(x, height - barHeight, barWidth - 1, barHeight);
           x += barWidth;
         }
       } else if (visualMode === 'wave') {
@@ -228,11 +221,8 @@
           const v = dataArray[i] / 128.0; 
           const y = (v * height) / 2;
 
-          if (i === 0) {
-            ctx.moveTo(x, y);
-          } else {
-            ctx.lineTo(x, y);
-          }
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
 
           x += sliceWidth;
         }
@@ -240,36 +230,30 @@
         ctx.lineTo(width, height / 2);
         ctx.stroke();
       } else if (visualMode === 'circle') {
-        // --- 🔄 3. 원형(Circular) 모드 (중심점 시작 스펙으로 수정) ---
+        // --- 🔄 3. 원형(Circular) 모드 (360도 전방위 균등 분할 완료) ---
         analyser.getByteFrequencyData(dataArray);
 
         const centerX = width / 2;
         const centerY = height / 2;
 
-        // 수집된 주파수 데이터를 360도로 원형 배치하여 그리기
-        for (let i = 0; i < bufferLength; i++) {
-          const angle = (i / bufferLength) * Math.PI * 2; // 각 데이터 인덱스를 라디안 각도로 환산
+        for (let i = 0; i < activeLength; i++) {
+          // 0부터 360도(Math.PI * 2)까지 오직 '움직이는 데이터(activeLength)'로만 꽉 채웁니다.
+          const angle = (i / activeLength) * Math.PI * 2; 
           
-          // 고주파수 영역은 소리가 작으므로 스케일을 곱해 시각 밸런스 조정
-          const scale = i > bufferLength * 0.6 ? 1.5 : 1.0;
-          // 중심점 시작에 맞추어 최대 반지름 비율을 0.28 -> 0.45로 확장
+          const scale = i > activeLength * 0.7 ? 1.6 : 1.0;
           const barLength = (dataArray[i] / 255) * (Math.min(width, height) * 0.45) * scale;
 
-          // 시작점을 정중앙 구심점으로 고정
           const x1 = centerX;
           const y1 = centerY;
-
-          // 끝점 (중심점에서 각도 방향으로 뻗어나가는 좌표 계산)
           const x2 = centerX + Math.cos(angle) * barLength;
           const y2 = centerY + Math.sin(angle) * barLength;
 
-          // 주파수 대역 및 바 길이에 따른 컬러링
-          const r = 16 + (i * 3);
+          const r = 16 + ((i / activeLength) * 160);
           const g = 185 - Math.floor(barLength * 0.3); 
-          const b = 129 + (i * 2);
+          const b = 129 + ((i / activeLength) * 120);
 
           ctx.strokeStyle = `rgb(${r}, ${g}, ${b})`;
-          ctx.lineWidth = 2.5;
+          ctx.lineWidth = 3.5; // 유효 데이터 집중으로 선이 겹치지 않게 최적화 두께 조정
           ctx.lineCap = 'round'; 
 
           ctx.beginPath();
@@ -280,12 +264,8 @@
       }
     }
 
-    // ==========================================
-    // 🎛️ 모드 체인지 및 팝업 모달 관리
-    // ==========================================
     function setVisualMode(mode) {
       visualMode = mode;
-      
       const btnBars = document.getElementById('mode-bars');
       const btnWave = document.getElementById('mode-wave');
       const btnCircle = document.getElementById('mode-circle');
@@ -294,13 +274,9 @@
         btn.className = "py-2 rounded-lg transition duration-150 text-gray-400 hover:text-white cursor-pointer";
       });
 
-      if (mode === 'bars') {
-        btnBars.className = "py-2 rounded-lg transition duration-150 bg-emerald-500 text-gray-950 cursor-pointer";
-      } else if (mode === 'wave') {
-        btnWave.className = "py-2 rounded-lg transition duration-150 bg-emerald-500 text-gray-950 cursor-pointer";
-      } else if (mode === 'circle') {
-        btnCircle.className = "py-2 rounded-lg transition duration-150 bg-emerald-500 text-gray-950 cursor-pointer";
-      }
+      if (mode === 'bars') btnBars.className = "py-2 rounded-lg transition duration-150 bg-emerald-500 text-gray-950 cursor-pointer";
+      else if (mode === 'wave') btnWave.className = "py-2 rounded-lg transition duration-150 bg-emerald-500 text-gray-950 cursor-pointer";
+      else if (mode === 'circle') btnCircle.className = "py-2 rounded-lg transition duration-150 bg-emerald-500 text-gray-950 cursor-pointer";
     }
 
     function showModal(msg) {
